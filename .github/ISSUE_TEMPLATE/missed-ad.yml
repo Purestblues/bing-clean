@@ -1,0 +1,76 @@
+name: 广告没被过滤 / 误杀了正常结果
+description: 报告漏判的广告，或者被错误隐藏的自然结果
+title: "[漏判] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这个扩展的广告判定完全依赖 Bing 的真实 DOM 标记，所以**没有诊断信息基本没法定位**。
+
+        麻烦先做这一步：打开 Bing 搜索结果页 → 点工具栏上的扩展图标 → 点最下面的「复制本页诊断」→ 把复制到的 JSON 贴到下面的文本框里。
+
+        诊断里有每张卡片的原始 HTML（`html`）、aria 标记（`aria`）、链接（`links`）和判定原因（`reason`），看着它就能直接改规则。
+
+  - type: input
+    id: version
+    attributes:
+      label: 扩展版本
+      description: 在 chrome://extensions 里能看到，或诊断 JSON 里的 `version` 字段
+      placeholder: "1.1.5"
+    validations:
+      required: true
+
+  - type: input
+    id: query
+    attributes:
+      label: 搜索词与页码
+      description: 越具体越好，比如「chatgpt，第 2 页」
+      placeholder: "chatgpt，第 2 页"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 问题类型
+      options:
+        - 广告没被过滤
+        - 正常结果被错误隐藏（误杀）
+        - 两者都有
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: 诊断 JSON
+      description: 弹窗 →「复制本页诊断」→ 粘贴到这里
+      render: json
+      placeholder: |
+        {
+          "version": "1.1.5",
+          "ads": [ ... ],
+          "unmatched": [ { "cls": "b_algo", "html": "<li ...>...", "aria": "..." } ]
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: 截图（可选）
+      description: 直接拖进来即可。如果有明显没被处理的广告，截一张图上最直观
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已在 chrome://extensions 里点过「重新加载」，刷新页面后问题仍然存在
+          required: true
+        - label: 诊断 JSON 里的 `version` 就是当前加载的版本
+          required: true
