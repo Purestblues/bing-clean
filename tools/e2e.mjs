@@ -272,14 +272,165 @@ try {
   `);
   ok('开关关闭时广告可以恢复显示', adsBack.visible > 0, JSON.stringify(adsBack));
 
-  console.log('\n[6] 弹窗页能正常渲染，并且能手动增删黑名单');
+  console.log('\n[6] 真实工具栏弹窗（chrome.action.openPopup）：本页统计必须真报出来');
+  /*
+   * 关键回归：以前 e2e 是把 popup.html 当普通标签页打开的，那条路径读到的 tab.url
+   * 是弹窗自己的 chrome-extension:// 地址，于是「统计不可用」的提示反而被当成正确行为
+   * 断言下来。真实弹窗里 chrome.tabs.query 返回的 tab 可能根本没有 url 字段（缺 host
+   * 权限，或弹窗不是用户点击打开的），旧版据此把每一页都判成「不是 Bing 页」——
+   * 这个 bug 只有真的把弹窗开出来才测得到。
+   */
+  const listTargets = async () => (await fetch(`http://127.0.0.1:${browser.port}/json/list`)).json();
+
+  const findTarget = async (re, timeout = 8000) => {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const t = (await listTargets()).find((x) => x.webSocketDebuggerUrl && re.test(x.url));
+      if (t) return t;
+      await sleep(150);
+    }
+    return null;
+  };
+
+  /** 从 service worker 里把真弹窗开出来（headless 下没有工具栏可点） */
+  const openRealPopup = async () => {
+    const sw = await findTarget(/src\/background\.js$/);
+    if (!sw) return null;
+    const swc = cdpConnect(sw.webSocketDebuggerUrl);
+    await swc.ready;
+    const r = await swc.send('Runtime.evaluate', {
+      expression: `chrome.action.openPopup().then(() => 'ok', (e) => 'err: ' + e.message)`,
+      awaitPromise: true,
+      returnByValue: true
+    }).catch(() => null);
+    swc.close();
+    if (!r || r.result.value !== 'ok') return null;
+
+    const target = await findTarget(/src\/popup\/popup\.html$/);
+    if (!target) return null;
+
+    const pc = cdpConnect(target.webSocketDebuggerUrl);
+    await pc.ready;
+    await pc.send('Runtime.enable');
+
+    const ev = async (expression) => {
+      const res = await pc.send('Runtime.evaluate', {
+        expression: `(async () => { ${expression} })()`,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      if (res.exceptionDetails) {
+        throw new Error('弹窗内异常: ' + (res.exceptionDetails.exception?.description || res.exceptionDetails.text));
+      }
+      return res.result.value;
+    };
+
+    const close = async () => {
+      const ver = await (await fetch(`http://127.0.0.1:${browser.port}/json/version`)).json();
+      const bc = cdpConnect(ver.webSocketDebuggerUrl);
+      await bc.ready;
+      await bc.send('Target.closeTarget', { targetId: target.id }).catch(() => {});
+      bc.close();
+      pc.close();
+      await sleep(400);
+    };
+
+    return { target, pc, ev, close };
+  };
+
+  const readPopup = (ev) => ev(`
+    return {
+      ads: document.getElementById('statAds').textContent,
+      blocked: document.getElementById('statBlocked').textContent,
+      results: document.getElementById('statResults').textContent,
+      hintHidden: document.getElementById('hint').hidden,
+      hint: document.getElementById('hint').textContent
+    };
+  `);
+
+  /** 等统计数字落进 DOM（弹窗里是异步的） */
+  const waitPopupReady = async (ev) => {
+    let pop = null;
+    for (let i = 0; i < 40; i++) {
+      pop = await readPopup(ev);
+      if (pop.ads !== '\u2013') return pop;
+      await sleep(150);
+    }
+    return pop;
+  };
+
+  // 页面侧的真实数字：被打上 data-bcl-ad 的元素数 == content script 的 stats.ads
+  const truthFromPage = () => evaluate(`
+    return {
+      ads: document.querySelectorAll('[data-bcl-ad]').length,
+      results: document.querySelectorAll('#b_results > li.bcl-li').length
+    };
+  `);
+
+  const popup1 = await openRealPopup();
+  ok('从 service worker 真的打开了工具栏弹窗', !!popup1);
+
+  if (popup1) {
+    const pop = await waitPopupReady(popup1.ev);
+    const pageTruth = await truthFromPage();
+    const seen = await popup1.ev(`
+      const [t] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return { hasUrl: !!(t && t.url), url: (t && t.url) || null };
+    `);
+
+    ok('弹窗没把 Bing 页误判成「不是搜索结果页」', pop.hintHidden === true, pop.hint);
+    eq('「去掉广告」的数字来自本页真实统计', pop.ads, String(pageTruth.ads));
+    eq('「可屏蔽」的数字来自本页真实统计', pop.results, String(pageTruth.results));
+    ok('广告数不是 0（fixture 里本来就有广告）', pageTruth.ads > 0, `实际 ${pageTruth.ads}`);
+
+    // background 在安装时应该只补缺失的键（get(null) + 按缺补写），不然一次升级就可能盖掉用户数据
+    const stored = await popup1.ev(`return await chrome.storage.sync.get(null);`);
+    ok('安装时写入的默认配置存在且完整',
+      !!(stored && Array.isArray(stored.blocklist) && stored.settings &&
+        ['hideAds', 'hideRailAds', 'showBlockBtn', 'showToast'].every((k) => k in stored.settings)),
+      JSON.stringify(stored));
+    console.log(`  · 真实弹窗里 tab.url 可见？${seen.hasUrl}（${seen.url || 'undefined'}）` +
+      ' —— 判定不依赖它，两种情况下都该出数字');
+
+    const png = await popup1.pc.send('Page.captureScreenshot', { format: 'png' }).catch(() => null);
+    if (png) fs.writeFileSync(path.join(ART, '06-真实弹窗.png'), Buffer.from(png.data, 'base64'));
+
+    console.log('\n[7] 弹窗开着的时候页面新增广告，数字要自己往上跳（实时推送）');
+    const before = Number(pop.ads);
+    await evaluate(`
+      const li = document.createElement('li');
+      li.className = 'b_ad b_adBottom';
+      li.innerHTML = '<div class="sb_add sb_adTA"><h2 class="b_topTitleAd"><a href="https://example.com/ad">新广告</a></h2></div>';
+      document.getElementById('b_results').appendChild(li);
+      return true;
+    `);
+
+    let live = null;
+    for (let i = 0; i < 40; i++) {
+      live = await readPopup(popup1.ev);
+      if (live.ads !== pop.ads) break;
+      await sleep(150);
+    }
+    ok('新广告出现后弹窗数字自动 +1（无需重开弹窗）',
+      Number(live.ads) === before + 1, `之前 ${before}，现在 ${live.ads}`);
+    ok('实时更新后提示语也没回来', live.hintHidden === true, live.hint);
+
+    await popup1.close();
+
+  }
+
+  console.log('\n[8] 弹窗页能直接打开，并且能手动增删黑名单');
   if (!browser.extensionId) {
     ok('拿到扩展 ID（用于打开弹窗页）', false, '没有从 service worker target 解析出 ID');
   } else {
     // 弹窗页是 chrome-extension:// 地址，必须先把请求拦截关掉，否则会被伪造成 204
     await cdp.send('Fetch.disable');
-    await navigate(`chrome-extension://${browser.extensionId}/src/popup/popup.html`);    await waitFor('document.getElementById("ver") && document.getElementById("ver").textContent', '弹窗页渲染');
-    await sleep(400);
+    await navigate(`chrome-extension://${browser.extensionId}/src/popup/popup.html`);
+    await waitFor('document.getElementById("ver") && document.getElementById("ver").textContent', '弹窗页渲染');
+
+    // 等黑名单渲染完（名单先出、统计后到）
+    await waitFor('document.querySelector("#list .domain")', '弹窗黑名单渲染');
+
 
     const popup = await evaluate(`
       const q = (s) => document.querySelector(s);
@@ -289,6 +440,7 @@ try {
         switches: [...document.querySelectorAll('.switch')].map((s) => s.checked),
         items: [...document.querySelectorAll('#list .domain')].map((e) => e.textContent),
         hint: !q('#hint').hidden,
+        hintText: q('#hint').textContent,
         addVisible: !!q('#addForm')
       };
     `);
@@ -297,7 +449,8 @@ try {
     ok('版本号渲染出来了', /^v\d+\.\d+\.\d+$/.test(popup.version), popup.version);
     eq('四个开关都在且默认开启', popup.switches, [true, true, true, true]);
     ok('黑名单里能看到刚屏蔽的 csdn.net', popup.items.includes('csdn.net'), JSON.stringify(popup.items));
-    ok('在弹窗内（非 Bing 页）给出「统计不可用」提示', popup.hint === true);
+    ok('在弹窗内（非 Bing 页）给出「不是 Bing 搜索结果页」提示',
+      popup.hint === true && popup.hintText.includes('不是 Bing'), popup.hintText);
     ok('手动添加表单存在', popup.addVisible === true);
 
     await shot('04-弹窗.png');
@@ -317,6 +470,44 @@ try {
     ok('粘贴完整 URL 也会被归一成主域 zhihu.com', afterAdd.includes('zhihu.com'), JSON.stringify(afterAdd));
 
     await shot('05-弹窗-新增后.png');
+  }
+  console.log('\n[9] 扩展重载后旧标签页自愈：弹窗补注入，不用手动刷新');
+  /*
+   * 真实场景：扩展更新/重载后，已经打开的 Bing 标签页里那份内容脚本变成「活着但 chrome.*
+   * 全失效」的僵尸，弹窗问不到统计。这里的断言是「补注入之后数字立刻正确」，
+   * 而不是「告诉用户去刷新页面」。
+   *
+   * 放在最后跑，因为它要重新导航回 SERP，而且重载本身会影响 storage 里的黑名单。
+   */
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+  await navigate(SERP_URL);
+  await waitFor('document.documentElement.hasAttribute("data-bcl-ready")', '重新加载 SERP');
+  await sleep(700);
+
+  const swNow = await findTarget(/src\/background\.js$/);
+  ok('找到 service worker（用于 reload）', !!swNow);
+  if (swNow) {
+    const swc = cdpConnect(swNow.webSocketDebuggerUrl);
+    await swc.ready;
+    await swc.send('Runtime.evaluate', { expression: 'chrome.runtime.reload()' }).catch(() => {});
+    swc.close();
+    await sleep(2500);
+
+    const orphaned = await evaluate(`
+      try { return String(chrome.runtime && chrome.runtime.id); } catch (e) { return 'throw'; }
+    `);
+    eq('重载后旧标签页里那份内容脚本已失活', orphaned, 'undefined');
+
+    const popup2 = await openRealPopup();
+    ok('重载后仍能打开弹窗', !!popup2);
+    if (popup2) {
+      const pop2 = await waitPopupReady(popup2.ev);
+      const truth2 = await truthFromPage();
+      ok('补注入后弹窗统计正常（不需要刷新页面）', pop2.hintHidden === true, pop2.hint);
+      eq('补注入后的广告数与页面一致', pop2.ads, String(truth2.ads));
+      eq('补注入后的可屏蔽数与页面一致', pop2.results, String(truth2.results));
+      await popup2.close();
+    }
   }
 } catch (err) {
   console.error('\n测试异常:', err.message);

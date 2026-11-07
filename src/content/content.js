@@ -5,6 +5,9 @@
 (function () {
   'use strict';
 
+  // 同一份脚本在同一页重复注入时只跑一遍（弹窗的补注入会走到这里）。
+  // 扩展重载后旧标签页里的脚本虽然还在（chrome.* 已失效），但重新注入落的是新的隔离世界，
+  // 这个标记不在里面，所以补注入能正常接管 —— 实测过，不需要额外的活体检查。
   if (window.__bclInjected) return;
   window.__bclInjected = true;
 
@@ -192,9 +195,15 @@
     }, 40);
   }
 
+  /**
+   * 扫描完就广播一份完整统计。
+   * 除给 service worker 算角标，弹窗也靠它实时刷新（不再靠「打开弹窗时问一次」）。
+   */
   function report() {
     try {
-      chrome.runtime.sendMessage({ type: 'bcl:count', ads: stats.ads, blocked: stats.blocked });
+      var payload = buildStats();
+      payload.type = 'bcl:count';
+      chrome.runtime.sendMessage(payload);
     } catch (e) { /* service worker 未醒或已失效，忽略 */ }
   }
 

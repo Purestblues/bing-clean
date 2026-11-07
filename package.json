@@ -1,6 +1,6 @@
 {
   "name": "bing-clean",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "private": true,
   "description": "Chrome 扩展：Bing 搜索结果去广告 + 按站点屏蔽",
   "type": "module",
