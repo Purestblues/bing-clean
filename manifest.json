@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Bing 净化 · 去广告 / 屏蔽站点",
+  "version": "1.1.5",
+  "description": "去掉 Bing 搜索结果里的广告，并支持一键屏蔽不想再看到的站点（按主域，屏蔽 csdn.net 会连它的所有子域一起隐藏）。",
+  "minimum_chrome_version": "102",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "action": {
+    "default_title": "Bing 净化",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.bing.com/*"
+      ],
+      "js": [
+        "src/content/sites.js",
+        "src/content/rules.js",
+        "src/content/content.js"
+      ],
+      "css": [
+        "src/content/content.css"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

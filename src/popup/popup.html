@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Bing 净化</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">B</span>
+      <span>Bing 净化</span>
+    </div>
+    <span class="ver" id="ver"></span>
+  </header>
+
+  <section class="stats" id="stats">
+    <div class="stat">
+      <b id="statAds">–</b>
+      <span>去掉广告</span>
+    </div>
+    <div class="stat">
+      <b id="statBlocked">–</b>
+      <span>隐藏结果</span>
+    </div>
+    <div class="stat">
+      <b id="statResults">–</b>
+      <span>可屏蔽</span>
+    </div>
+  </section>
+
+  <p class="hint" id="hint" hidden>当前标签页不是 Bing 搜索结果页，统计不可用。</p>
+
+  <section class="switches">
+    <label class="row">
+      <span class="row-main">
+        <span class="row-title">去掉搜索结果里的广告</span>
+        <span class="row-sub">含顶部、底部整块推广与右侧栏广告</span>
+      </span>
+      <input type="checkbox" id="opt-hideAds" class="switch">
+    </label>
+    <label class="row">
+      <span class="row-main">
+        <span class="row-title">去掉右侧栏广告</span>
+        <span class="row-sub">关掉后侧栏的「相关搜索」等内容保持原样</span>
+      </span>
+      <input type="checkbox" id="opt-hideRailAds" class="switch">
+    </label>
+    <label class="row">
+      <span class="row-main">
+        <span class="row-title">在每条结果上显示「屏蔽此站」</span>
+        <span class="row-sub">鼠标悬停结果时出现在右上角</span>
+      </span>
+      <input type="checkbox" id="opt-showBlockBtn" class="switch">
+    </label>
+    <label class="row">
+      <span class="row-main">
+        <span class="row-title">操作后显示回执（可撤销）</span>
+        <span class="row-sub">屏蔽后 6 秒内可以一键撤回</span>
+      </span>
+      <input type="checkbox" id="opt-showToast" class="switch">
+    </label>
+  </section>
+
+  <section class="blocklist">
+    <div class="section-title">
+      <span>屏蔽名单</span>
+      <span class="count" id="blCount"></span>
+    </div>
+
+    <form class="add" id="addForm">
+      <input id="addInput" type="text" autocomplete="off" spellcheck="false"
+             placeholder="加一个域名，如 csdn.net">
+      <button type="submit" id="addBtn">添加</button>
+    </form>
+    <p class="tip">按主域生效：屏蔽 <code>csdn.net</code> 会连 <code>blog.csdn.net</code>、<code>mp.csdn.net</code> 一起隐藏。只想屏蔽某个子域就写 <code>=blog.csdn.net</code>。</p>
+
+    <ul class="list" id="list"></ul>
+    <p class="empty" id="empty" hidden>还没有屏蔽任何站点。在搜索结果上悬停，点「屏蔽 xxx」即可。</p>
+  </section>
+
+  <footer class="foot">
+    <button type="button" class="ghost" id="diagBtn">复制本页诊断</button>
+  </footer>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="../content/sites.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

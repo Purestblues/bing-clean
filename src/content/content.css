@@ -1,0 +1,144 @@
+/* ==========================================================================
+   静态兜底：文档一开始就把结构上确定的广告块藏掉，避免 JS 起来之前闪一下广告。
+   用 html 上的开关属性控制，用户可以全局关掉（关掉时广告会重新出现）。
+   ========================================================================== */
+html:not([data-bcl-no-ads]) #b_content li.b_ad,
+html:not([data-bcl-no-ads]) #b_content li.b_ads {
+  display: none !important;
+}
+
+/* 整组广告被拿掉后，空的分组容器也要收起来，否则会留一道空白 */
+html:not([data-bcl-no-ads]) [data-bcl-empty] {
+  display: none !important;
+}
+
+/* JS 判定命中的广告卡片 */
+html:not([data-bcl-no-ads]) [data-bcl-ad] {
+  display: none !important;
+}
+
+/* 黑名单命中 / 已屏蔽的结果 */
+#b_results > li[data-bcl-hidden],
+#b_context [data-bcl-hidden],
+aside [data-bcl-hidden] {
+  display: none !important;
+}
+
+/* ==========================================================================
+   「屏蔽此站」按钮
+   ========================================================================== */
+#b_results > li.bcl-li {
+  position: relative;
+}
+
+.bcl-block {
+  position: absolute;
+  top: -6px;
+  right: 0;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  margin: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #616161;
+  font: 500 12px/1 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+#b_results > li.bcl-li:hover .bcl-block,
+.bcl-block:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bcl-block:hover {
+  color: #c62828;
+  border-color: rgba(198, 40, 40, 0.45);
+  background: #fff;
+}
+
+.bcl-block:active {
+  transform: translateY(1px);
+}
+
+.bcl-block-ico {
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* 同一站点出现多条结果时，把后面的按钮淡化一点：点任意一条都会一起屏蔽 */
+#b_results > li.bcl-li:hover .bcl-block[data-bcl-repeat="1"] {
+  opacity: 0.55;
+}
+
+/* ==========================================================================
+   操作回执（可撤销）
+   ========================================================================== */
+.bcl-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92vw, 520px);
+  padding: 10px 12px 10px 16px;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: #202124;
+  color: #f1f3f4;
+  font: 400 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.24);
+  animation: bcl-toast-in 0.16s ease-out;
+}
+
+@keyframes bcl-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.bcl-toast-text {
+  flex: 1 1 auto;
+}
+
+.bcl-toast-btn {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 6px;
+  background: transparent;
+  color: #8ab4f8;
+  font: 500 12px/1 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.bcl-toast-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .bcl-block {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(41, 42, 45, 0.96);
+    color: #bdbdbd;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  .bcl-block:hover {
+    background: #333;
+    color: #ff8a80;
+    border-color: rgba(255, 138, 128, 0.5);
+  }
+}
